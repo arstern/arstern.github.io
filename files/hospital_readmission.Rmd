@@ -1,0 +1,306 @@
+---
+title: "Arielle Stern Mini Project"
+author: "Arielle Stern"
+date: "3/26/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require('pacman')) {
+  install.packages('pacman')
+}
+pacman::p_load(bestglm, glmnet, leaps, car, tidyverse, mapproj, dplyr, ggplot2, pROC, randomForest, partykit, gridExtra, tinytex, rpart)
+```
+
+```{r, include=FALSE}
+data.original <- read.csv("diabetic.data.csv")
+data.cleaned <- read.csv("readmission.csv")
+```
+
+
+## Executive Summary
+
+### Background
+Diabetes is a chronic medical condition affecting millions of Americans, but if managed well, with good diet, exercise and medication, patients can lead relatively normal lives. However, if improperly managed, diabetes can lead to patients being continuously admitted and readmitted to hospitals. Readmissions are especially serious - they represent a failure of the health system to provide adequate support to the patient and are extremely costly to the system. As a result, the Centers for Medicare and Medicaid Services announced in 2012 that they would no longer reimburse hospitals for services rendered if a patient was readmitted with complications within 30 days of discharge. Given these policy changes, being able to identify and predict those patients most at risk for costly readmissions has become a pressing priority for hospital administrators. 
+
+### Data Summary 
+The data used in this study is from the Center for Clinical and Translational Research at Virginia Commonwealth University. It covers data on diabetes patients across 130 U.S. hospitals from 1999 to 2008. There are over 100,000 unique hospital admissions in this dataset, from ~70,000 unique patients. The data includes demographic elements, such as age, gender, and race, as well as clinical attributes such as tests conducted, emergency/inpatient visits, etc.
+
+All observations have five things in common:
+
+1.	They are all hospital admissions
+2.	Each patient had some form of diabetes
+3.	The patient stayed for between 1 and 14 days.
+4.	The patient had laboratory tests performed on him/her.
+5.	The patient was given some form of medication during the visit
+
+### Methods
+Several methods were explored in order to identify and predict patients most at risk for readmission in under 30 days. Least absolute shrinkage and selection operator (LASSO) with cross validation was used to fit a logistic model to the training data. Variables outputted by LASSO were analyzed and used in a logistic regression model. Backwards selection was used to include only variables significant at the 0.01 level. Additionally, the ability of decision trees to predict readmissions using the training data was examined. The performance of the models was assessed using the testing data. Criterion that were assessed include ROC curves, AUC, and weighted misclassification error. 
+
+### Conclusions
+The final model includes `number_emergency`, `number_inpatient`, `number_diagnoses`, `insulin`, `diabetesMed`, `disch_disp_modified`, `age_mod`, `diag1_mod`, and `diag2_mod`. This model was determined from LASSO and backwards selection of a logistic regression model using the `lambda.1se` variables outputted by LASSO. This model achieved both high sensitivity, the ability to accurately identify patients who were readmitted in under 30 days, and high specificity, the ability to accurately identify patients who were not readmitted in under 30 days. Additionally, the weighted misclassification error, which summarizes how often the model predicted a patient would be readmitted when in fact the patient was not and how often the model predicted a patient would not be readmitted when in fact the patient was, was low for this model at 22.5%. 
+
+### Concerns and Limitations
+
+The main concerns about the data are missing values and potentially informative variables that were not included in the dataset. The cleaned data contained many missing values for a patient's race and tertiary diagnoses, which may be useful in future predictions Additionally, the variables in the dataset do not indicate whether a patient has Type 1 or Type 2 diabetes and does not provide information about a patient's lifestyle. Including the type of diabetes a patient has is important because patients with Type 2 diabetes are at an increased risk for a variety of health complications, which could increase their chances of costly readmissions. Additionally, good diet and exercise help patients with diabetes live healthier lives and therefore reduce their chances of readmission.
+
+## Report Analysis
+
+### Exploratory Data Analysis
+
+#### Origin 
+The data in this study was collected by the Center for Clinical and Translational Research at Virginia Commonwealth university. The dataset contains information on over 100,000 unique hospital admissions from around 70,000 diabetes patients across 130 hospitals in the US from 1999 to 2008.
+
+#### Variables
+The input variables used are:
+
+**1) Patient identifiers:** 
+a. `encounter_id`: unique identifier for each admission 
+b. `patient_nbr`: unique identifier for each patient 
+
+**2) Patient Demographics:** 
+`race`, `age`, `gender`, `weight` cover the basic demographic information associated with each patient. `Payer_code` is an additional variable that identifies which health insurance (Medicare /Medicaid / Commercial) the patient holds.
+
+**3) Admission and discharge details:** 
+a.	`admission_source_id` and `admission_type_id` identify who referred the patient to the hospital (e.g. physician vs. emergency dept.) and what type of admission this was (Emergency vs. Elective vs. Urgent). 
+b.	`discharge_disposition_id` indicates where the patient was discharged to after treatment.
+
+**4) Patient Medical History:**
+a.	`num_outpatient`: number of outpatient visits by the patient in the year prior to the current encounter
+b.	`num_inpatient`: number of inpatient visits by the patient in the year prior to the current encounter
+c.	`num_emergency`: number of emergency visits by the patient in the year prior to the current encounter
+
+**5)	Patient admission details:**
+a.	`medical_specialty`: the specialty of the physician admitting the patient
+b.	`diag_1`, `diag_2`, `diag_3`: ICD9 codes for the primary, secondary and tertiary diagnoses of the patient.  ICD9 are the universal codes that all physicians use to record diagnoses. There are various easy to use tools to lookup what individual codes mean (Wikipedia is pretty decent on its own)
+c.	`time_in_hospital`: the patient’s length of stay in the hospital (in days)
+d.	`number_diagnoses`: Total no. of diagnosis entered for the patient
+e.	`num_lab_procedures`: No. of lab procedures performed in the current encounter
+f.	`num_procedures`: No. of non-lab procedures performed in the current encounter
+g.	`num_medications`: No. of distinct medications prescribed in the current encounter
+
+**6)	Clinical Results:**
+a.	`max_glu_serum`: indicates results of the glucose serum test
+b.	`A1Cresult`: indicates results of the A1c test
+
+**7)	Medication Details:**
+a.	`diabetesMed`: indicates if any diabetes medication was prescribed 
+b.	`change`: indicates if there was a change in diabetes medication
+c.	`24 medication variables`: indicate whether the dosage of the medicines was changed in any manner during the encounter
+
+**8)	Readmission indicator:** 
+Indicates whether a patient was readmitted after a particular admission. There are 3 levels for this variable: "NO" = no readmission, "< 30" = readmission within 30 days and "> 30" = readmission after more than 30 days. The 30 day distinction is of practical importance to hospitals because federal regulations penalize hospitals for an excessive proportion of such readmissions.
+
+#### Data Cleaning 
+
+```{r, include=FALSE}
+dim(data.original)
+data.original[data.original == "?"] <- NA
+sum(is.na(data.original))
+summary(data.original)
+
+dim(data.cleaned)
+data.cleaned[data.cleaned == "?"] <- NA
+sum(is.na(data.cleaned))
+summary(data.cleaned)
+
+data.cleaned$readmitted <- as.factor(ifelse(data.cleaned$readmitted == "<30", "1", "0"))
+```
+Prior to analysis, the data was cleaned. The original data contained 192,849 missing values. Because `Payer_code`, `weight`, and `medical_specialty` accounted for most of these missing values, these variables were removed from the dataset. Additionally, variables with little variability across patients such as certain medication variables were excluded. Some variables were regrouped to aggregate levels with few patients. In particular, the readmission indicator was regrouped to reflect whether a patient had been readmitted in under 30 days or not. Patients who were either not readmitted or who had been readmitted in more than 30 days fell into the latter category. This regrouping highlights the focus of this study on identifying factors that make a patient more likely to be readmitted within 30 days of discharge. The resulting cleaned data has 3,696 missing values; `race` accounts for 2,273 of these missing values, and `diag3_mod` accounts for the remaining 1,423. The cleaned data has 31 variables compared to the original  data's 50 variables. Additionally, the cleaned data contains 101,766 unique hospital  admissions. 
+
+#### Data Summary
+```{r, include=FALSE}
+str(data.cleaned)
+par(mfrow=c(2,3))
+data.cleaned %>%
+  group_by(readmitted) %>%
+  summarize(number = n(), percent = n()/nrow(data.cleaned))
+
+data.cleaned %>%
+  group_by(readmitted) %>%
+  summarize(Male = sum(gender == "Male")/sum(data.cleaned$gender == "Male", na.rm = TRUE), Female = sum(gender == "Female")/sum(data.cleaned$gender == "Female", na.rm = TRUE), Caucasian = sum(race == "Caucasian", na.rm = TRUE)/sum(data.cleaned$race == "Caucasian", na.rm = TRUE), AfricanAmerican = sum(race == "AfricanAmerican", na.rm = TRUE)/sum(data.cleaned$race == "AfricanAmerican", na.rm = TRUE), Hispanic = sum(race == "Hispanic", na.rm = TRUE)/sum(data.cleaned$race == "Hispanic", na.rm = TRUE), Asian = sum(race == "Asian", na.rm = TRUE)/sum(data.cleaned$race == "Asian", na.rm = TRUE), Other = sum(race == "Other", na.rm = TRUE)/sum(data.cleaned$race == "Other", na.rm = TRUE), NAs = sum(is.na(race))/sum(is.na(data.cleaned$race)))
+
+data.cleaned %>%
+  summarize(Male = sum(gender == "Male"), Female = sum(gender == "Female"),  Caucasian = sum(race == "Caucasian", na.rm = TRUE), AfricanAmerican = sum(race == "AfricanAmerican", na.rm = TRUE), Hispanic = sum(race == "Hispanic", na.rm = TRUE), Asian = sum(race == "Asian", na.rm = TRUE),  Other = sum(race == "Other", na.rm = TRUE), Missing = sum(is.na(race)))
+
+data.cleaned.age <- data.cleaned %>%
+  group_by(age_mod) %>%
+  summarize(readmitted_percent = sum(readmitted == "1")/n(), not_readmitted_percent = sum(readmitted == 0)/n())
+
+ggplot(data.cleaned.age, aes(x = age_mod, y = readmitted_percent)) + geom_bar(stat="identity") + labs(title="Readmissions vs. Age", x = "Age (yrs)", y = "Readmission < 30 Days (%)") +
+    theme(text = element_text(size=6))
+```
+
+Of the hospital admissions in the study, 11,357 or 11.16% were readmissions in under 30 days while 90,409 or 88.84% were not. Readmission rates appear to be roughly similar across gender with 11.06% of admissions for male patients being under 30 day readmissions and 11.25% of admissions for female patients being under 30 day readmissions. Additionally, readmission rates in under 30 days were similar across races; 11.29% of admissions were under 30 day readmissions for Caucasians, 11.21% for African Americans, 10.41% for Hispanics, 10.14% for Asians, and 9.62% for Other. One problem with the data is the large number of missing values for race. There were 2,273 values missing for this variable and an additional 1,506 labelled Other. One variable for which readmissions in under 30 days appears to vary significantly with is age. For patients 0 to 19 years old, only 5.046% were readmitted in under 30 days compared to 10.36% for patients 20 to 59 years old, 11.47% for patients 60 to 79 years old, and 11.95% for patients 80 years and older. 
+
+The boxplots below show that the distributions of time spent in the hospital, number of lab procedures, number of procedures, and the number of medications look similar in admissions that were readmissions in under 30 days and that were not. Number of diagnoses on average appears to be higher in admissions that were readmissions in under 30 days compared to those that were not. Additionally, the variability in the number of emergency procedures appears to be greater in admissions that were not under 30 day admissions compared to those that were. 
+
+```{r, echo=FALSE}
+p1 <- ggplot(data.cleaned, aes(x = readmitted, y = time_in_hospital)) + geom_boxplot() + labs(title="Hospital Time vs. Readmissions", y = "Time in Hospital (days)", x = "Readmission < 30 Days") +
+    theme(text = element_text(size=5))
+  
+p2 <- ggplot(data.cleaned, aes(x = readmitted, y = num_lab_procedures)) + geom_boxplot() + labs(title="Lab Procedures vs. Readmissions", y = "Number Lab Procedures", x = "Readmission < 30 Days") +
+    theme(text = element_text(size=5))
+
+p3 <- ggplot(data.cleaned, aes(x = readmitted, y = num_procedures)) + geom_boxplot() + labs(title="Procedures vs. Readmissions", y = "Number Procedures", x = "Readmission < 30 Days") +
+    theme(text = element_text(size=5))
+
+p4 <- ggplot(data.cleaned, aes(x = readmitted, y = num_medications)) + geom_boxplot() + labs(title="Number Medications vs. Readmissions", y = "Number Medications", x = "Readmission < 30 Days") +
+    theme(text = element_text(size=5))
+
+p5 <- ggplot(data.cleaned, aes(x = readmitted, y = number_diagnoses)) + geom_boxplot() + labs(title="Number Diagnoses vs. Readmissions", y = "Number Diagnoses", x = "Readmission < 30 Days") +
+    theme(text = element_text(size=5))
+
+p6 <- ggplot(data.cleaned, aes(x = readmitted, y = number_emergency)) + geom_boxplot() + labs(title="Number Diagnoses vs. Readmissions", y = "Number Diagnoses", x = "Readmission < 30 Days") +
+    theme(text = element_text(size=5))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2)
+
+
+```
+
+### Analyses
+
+#### Model Creation 
+
+Several models were explored in order to find the optimal way to predict whether a patient would be readmitted within 30 days. First, the data was split such that 90% of the data was randomly assigned to training data and 10% was randomly assigned to testing data. `encounter_id` and `patient_nbr` were not included in any models created as they vary on the level of individual observations, so including them would result in a model with no degrees of freedom to estimate anything.
+
+```{r, include = FALSE}
+set.seed(10)
+
+data.cleaned.touse <- na.omit(data.cleaned) %>%
+  select(-encounter_id, -patient_nbr)
+
+index.train <- sample(length(data.cleaned.touse$readmitted) , 88329) #90% of data for training 
+data.train <- data.cleaned.touse[index.train,] 
+data.test <- data.cleaned.touse[-index.train,] 
+```
+
+Then, LASSO with cross validation was used to fit a logistic model to the training data. Because of the penalty LASSO places on the size of model coefficients, the number of nonzero coefficients was reduced. The plot below shows the mean cross validation error (cvm), value of log(lambda), and number of nonzero coefficients from the LASSO output The left vertical line shows `lambda.min`, the lambda value for which cvm is minimized, and the right vertical line shows `lambda.1se`, the largest lambda whose cvm is within the cvsd bar for `lambda.min`. The cvm for `lambda.min` is 0.6764203 compared to 0.6801612 for `lambda.1se`. Additionally, using `lambda.min` resulted in a model with 87 nonzero coefficients whereas using `lambda.1se` resulted in a model with 20 non zero coefficients. Because using `lambda.1se` resulted in a much more parsimonious model with only a very small increase in cvm, the model using the `lambda.min` variables was not explored further. The variables in outputted by `lambda.1se` include: `time_in_hospital`, `num_medications`, `number_emergency`, `number_inpatient`, `number_diagnoses`, `insulin`, `diabetesMed`, `disch_disp_modified`, `age_mod`, `diag1_mod`, `diag2_mod`, and `diag3_mod`. 
+
+```{r, include = FALSE}
+#LASSO w/ glm
+set.seed(10)
+X <- model.matrix(readmitted~., data.train)[,-1]
+Y <- data.train$readmitted
+fit.glmnet <-  cv.glmnet(X, Y, alpha=1, nfolds = 10, family = "binomial")
+
+#lambda.min and coeffs
+fit.glmnet$lambda.min
+fit.glmnet$cvm[fit.glmnet$lambda == fit.glmnet$lambda.min]
+coef.min <- coef(fit.glmnet, s="lambda.min")  
+coef.min <- coef.min[which(coef.min !=0),] 
+coef.min
+
+#lambda.1se and coeffs
+fit.glmnet$lambda.1se
+fit.glmnet$cvm[fit.glmnet$lambda == fit.glmnet$lambda.1se]
+coef.1se <- coef(fit.glmnet, s="lambda.1se")  
+coef.1se <- coef.1se[which(coef.1se !=0),] 
+coef.1se
+
+#OLS model w/ lambda 1.se vars + backward selection
+fit.logit.lambda1se<- glm(readmitted ~ time_in_hospital + num_medications +number_emergency + number_inpatient + number_diagnoses + insulin + diabetesMed + disch_disp_modified + age_mod + diag1_mod + diag2_mod + diag2_mod, family=binomial, data=data.train)
+#Anova(fit.logit.lambda1se)
+
+#remove time_in_hospital
+fit.logit.lambda1se.back1 <- glm(readmitted ~ num_medications +number_emergency + number_inpatient + number_diagnoses + insulin + diabetesMed + disch_disp_modified + age_mod + diag1_mod + diag2_mod + diag2_mod, family=binomial, data=data.train)
+#Anova(fit.logit.lambda1se.back1)
+
+#remove num_medications
+fit.logit.lambda1se.back2 <- glm(readmitted ~ number_emergency + number_inpatient + number_diagnoses + insulin + diabetesMed + disch_disp_modified + age_mod + diag1_mod + diag2_mod + diag2_mod, family=binomial, data=data.train)
+#Anova(fit.logit.lambda1se.back2)
+
+fit.rf <- randomForest(readmitted~., data.train, mtry=19, ntree=100, mindev = .005, split="deviance")
+```
+
+```{r, echo=FALSE, fig.height=4, fig.width=8}
+plot(fit.glmnet)
+```
+
+A logistic regression model was then fit with the variables outputted by LASSO using `lambda.1se`. This step was performed because the coefficients output by the LASSO model are biased due to the penalty LASSO places on the size of the model. Backwards selection was then used to remove variables that were not significant at the 0.01 level. The significance of each variable was assessed using Anova. After backwards selection, `time_in_hospital`, `num_medications`, and `diag3_mod` were removed from the model. 
+
+Next, decision trees were used to predict under 30 day readmissions with the training data. In order to reduce variance, bootstrap samples were taken from the training data. Each bootstrap sample contained the same number of observations as the training data. Then, a deep random tree for each bootstrap sample was built by splitting only 19 randomly chosen predictors (roughly 2/3 of the predictors in the training data) at each split, thereby reducing correlation among trees. The split that reduced the tree's deviance was chosen and then fixed. This process was repeated until an additional split did not reduce deviance by more than 0.005. 100 trees were created this way. All of the random trees were bagged by minimizing misclassification error. However, it is important to note that this bagging process uses a threshold of 0.5 in misclassification analysis, even though the losses for false positives and false negatives are not equal here. 
+
+For the decision tree model, testing error was assessed in term of out-of-bag observations. Because the decision tree model uses a bootstrap sample, there are observations not present in each tree, known as out-of-bag observations. The plot below shows the misclassification rates for OOB observations, misclassification errors for observations that are not under 30 day readmissions ("0"), and misclassification errors for observations that are under 30 day readmissions ("1") using a 0.5 threshold. As the plot shows, the tree model is good at identifying admissions that were not under 30 day readmissions and bad at identifying admissions that were under 30 day readmissions using the training data. 
+
+```{r, echo=FALSE, fig.height=4, fig.width=8}
+plot(fit.rf, main = "Decision Tree Model")
+legend("topright", colnames(fit.rf$err.rate), col=1:3, cex=0.8, fill=1:3)
+```
+
+
+Lastly, minimizing AIC was explored. However, this approach to model creation was found to require too much computational power. Therefore, this methodology was not explored further. 
+
+#### ROC and AUC Analysis  
+
+The logistic regression model with the `lambda.1se` variables, the logistic regression model with the `lambda.1se` variables and backward selection, and the decision tree model were evaluated. First, the probability of each admission in the testing data being an under 30 day readmission was predicted using each model. Then, the ROC curves for each model were plotted in order to examine sensitivity, the true positive rate, and specificity, the true negative rate. All three ROC curves push the upper left corner, indicating high sensitivity and specificity. Next, area under the ROC curve was determined. In terms of this classifier, the model with all the `lamdba.1se` variables performed the best, followed by the model with the `lambda.1se` variables and backward selection, and lastly the decision tree model with AUCs of 0.6387, 0.6371, and 0.6228, respectively.
+
+```{r, echo=FALSE, fig.height=4, fig.width=8}
+
+#ROC curves on testing data
+fit.logit.lambda1se.test <- predict(fit.logit.lambda1se, data.test, type="response")
+fit.logit.lambda1se.test.roc <- roc(data.test$readmitted, fit.logit.lambda1se.test, plot=T,  col = "red")
+
+fit.logit.lambda1se.back2.test <- predict(fit.logit.lambda1se.back2, data.test, type="response")
+par(new=TRUE)
+fit.logit.lambda1se.back2.test.roc <- roc(data.test$readmitted, fit.logit.lambda1se.back2.test, plot=T, col = "blue")
+
+par(new = TRUE)
+fit.rf.test <- predict(fit.rf, data.test, type="prob")
+fit.rf.test.roc <- roc(data.test$readmitted, fit.rf.test[,2], plot=T, col = "green") #want 1 probabilities which are in column 2
+legend(1.2, 1, legend = c("glm with lambda.1se variables", "glm with lambda.1se variables + backward selection", "random forest"),  col=c("red", "blue", "green"), lty=1, pt.cex = 1, cex = .4)
+``` 
+
+```{r, include = FALSE}
+#AUC 
+fit.logit.lambda1se.test.roc$auc
+fit.logit.lambda1se.back2.test.roc$auc
+fit.rf.test.roc$auc
+```
+
+#### Misclassification Error Analysis
+
+Misclassification error was analyzed for all three models. Let "1" denote an admission that is an under 30 day readmission, and let "0" denote an admission that is not an under 30 day readmission. Let $a1,0=L(Y=1,\hat{Y}=0)$ denote the loss (cost) of making an “1” to a “0”, and let $a0,1=L(Y=0,\hat{Y}=1)$ denote the loss of making a “0” to an “1”. Let $a0,0=a1,1=0$. Here, $a0,1$ is twice as costly as $a1,0$ as it is twice as costly to mislabel a readmission than it does to mislabel a non-readmission. Minimizing the two mean losses, we have the optimal rule: $\frac{a0,1}{a1,0}=\frac{1}{2}$. We end up with the Bayes rule $prob(Y=1|x)>\frac{0.5}{1+0.5}=0.33$. Equivalently, this rule can be written $logit>\log(\frac{0.33}{0.67})= -30.6931$
+
+Weighted misclassification error was found for all three models. Using the predicted probabilities of readmission calculated for the testing data, values of "1" were assigned to observations where the probability of an under 30 readmission exceeded 0.33. Values of "0" were assigned to the remaining observations. Weighted misclassification errors were determined by taking the sum of twice the of the number of predicted "1"s in the testing data that were really "0"s and the number of predicted "0"s in the testing data that were really "1"s. The weighted misclassification error for the logistic regression model with all `lambda.1se` variables was 0.2250637, compared to 0.2253693 for the logistic regression model with `lambda.1se` variables and backwards selection, and 0.2368823 for the decision tree model. Despite the fact that weighted MCEs are similar across models, it is interesting to note that the decision tree model mislabeled fewer readmissions compared to the other two models. The tree model mislabeled 1,005 readmissions compared to 1,070 for the logistic regression model with the LASSO variables and 1,071 for the logistic regression model with the LASSO variables and backward selection. However, the tree model performed much worse in labeling non readmissions as it mislabeled 279 non readmissions compared to 70 and 69 for the logistic regression with LASSO variables models without and with backward selection, respectively. Therefore, even though the tree model mislabels fewer readmissions, which are costlier, its poor performance in mislabeling many non readmissions makes it misclassifcation performance the worst of the three models explored.
+
+```{r, include = FALSE}
+# Misclassification errors with Bayes's rule
+fit.logit.lambda1se.pred <- predict(fit.logit.lambda1se, data.test, type = "response") 
+fit.logit.lambda1se.pred.bayes <- as.factor(ifelse(fit.logit.lambda1se.pred > .33, "1", "0"))
+fit.logit.lambda1se.pred.bayes.MCE=(sum(2*(fit.logit.lambda1se.pred.bayes[data.test$readmitted == "1"] != "1")) + sum(fit.logit.lambda1se.pred.bayes[data.test$readmitted == "0"] != "0"))/length(data.test$readmitted)
+fit.logit.lambda1se.pred.bayes.MCE
+
+fit.logit.lambda1se.back2.pred <- predict(fit.logit.lambda1se.back2, data.test, type = "response") 
+fit.logit.lambda1se.back2.pred.bayes <- as.factor(ifelse(fit.logit.lambda1se.back2.pred > .33, "1", "0"))
+fit.logit.lambda1se.back2.pred.bayes.MCE=(sum(2*(fit.logit.lambda1se.back2.pred.bayes[data.test$readmitted == "1"] != "1")) + sum(fit.logit.lambda1se.back2.pred.bayes[data.test$readmitted == "0"] != "0"))/length(data.test$readmitted)
+fit.logit.lambda1se.back2.pred.bayes.MCE
+
+fit.rf.pred <- predict(fit.rf, data.test, type = "prob") 
+fit.rf.pred.bayes <- as.factor(ifelse(fit.rf.pred[,2] > .33, "1", "0"))
+fit.rf.pred.bayes.MCE=(sum(2*(fit.rf.pred.bayes[data.test$readmitted == "1"] != "1")) + sum(fit.rf.pred.bayes[data.test$readmitted == "0"] != "0"))/length(data.test$readmitted)
+fit.rf.pred.bayes.MCE
+```
+
+#### Model Selection 
+The criterion used in model selection included ROC curves, AUC, misclassification error, and model size. Based on these criterion, the model with the `lambda.1se` variables and backwards selection to eliminate variables not significant at the 0.01 level is selected. The ROC curve for this model nearly conincides with the ROC curve for the model with all of the `lambda.1se` varibles. In contrast, the ROC curves for these two models contain the ROC curve for the decision tree model, indicating that the decision tree model achieves lower sensitivity and lower specificity, which is particularly costly given that the cost of a false positive is twice that of a false negative. The AUC values for the model with all the `lambda.1se` variables and the model with those variables and backward selection are effectively the same at 0.6387 and 0.6371, respectively. However, the AUC for the decision tree model is lower at 0.6228 Lastly, the additional variables in the model without backward selection do not pose a large benefit in misclassification analysis. However, the decision tree model is costlier in terms of its high misclassification error. The weighted misclassification error for the larger model is 0.2250637 compared to 0.2253693 for the small model. This difference is due to only one more false positive and one more false negative using the model with backward selection. However, even though the tree model mislabeled few readmissions it mislabeled many non readmissions, making this model the most costly to hospitals. Because the tree model had lower sensitivity and specificity than the other two models and is costlier to hospitals, it was determined to be suboptimal and not chosen as the final model. Between the models with the LASSO variables with and without backward selection, all criterion examined are comparable among the two models. Therefore, because of the similarities in the criterion between these two models, the model utilizing backward selection is chosen in favor of a smaller model. 
+
+### Conclusion
+The final model was obtained by using LASSO with cross validation to fit a logistic model to the training data. Then logistic regression was performed using the variables outputted by `lambda.1se`, the largest lambda whose cvm is within the cvsd bar for `lambda.min`. Backwards selection was performed in order to remove variables that were not significant at the 0.01 level. The final model includes `number_emergency`, `number_inpatient`, `number_diagnoses`, `insulin`, `diabetesMed`, `disch_disp_modified`, `age_mod`, `diag1_mod`, and `diag2_mod`. The coefficients and significance of the variables in the final logistic regression model can be seen in the Appendix. To summarize the effects found, holding all other factors constant, increasing `number_emergency`, `number_inpatient`, and `number_diagnoses` on average increases the probability of an under 30 day readmission. Additionally, on average, being older, taking diabetes medication, being discharged to home with Home Health Service, and being discharged or transferred to SNF increases probability of an under 30 day readmission, all else equal. Patients not taking insulin, with steady insulin dosage, or with increased insulin dosage during the encounter on average have a decreased probability of an under 30 day readmission, holding all other factors constant. Various patient primary and secondary diagnoses either increase or decrease the probability of an under 30 day readmission on average, all else equal. 
+
+This model achieves both high sensitivity and high specificity as its ROC curve pushes the upper left corner. Additionally, its AUC is 0.6371. Based off the estimate that it is twice as costly to mislabel an under 30 day readmission than to mislabel a non under 30 day readmission we come up with the following classification rule to minimize cost: $prob(Y=1|x)>\frac{0.5}{1+0.5}=0.33$. where "1" denotes an under 30 day readmission. Using this classification rule, weighted misclassification error for the final model was found to be 0.2253693. Using the model presented here, doctors can better predict the probability of a patient with diabetes being readmitted to the hospital in under 30 days. In doing so, doctors can identify at risk patients, thereby improving patient outcomes and minimizing costs to the hospital. 
+
+Despite the fact that this model performed well given its high AUC and low weighted MCE, improvements could be made. As mentioned before, `race` and `diag3_mod` included many missing values. Though neither of these variables appeared in the final model, fewer missing values would have led to more accurate conclusions regarding these variables. One area for improvement could be to indicate whether the patient admitted had been diagnosed with Type 1 or Type 2 diabetes. Type 1 diabetes happens more often in children and is when the body is unable to produce insulin. In contrast, Type 2 happens more often in people who are obese; these people produce insulin but their body does not respond to it. Because people who are obese are more likely to develop both Type 2 diabetes and have other severe health complications like heart disease, stroke, kidney disease and more, I would expect these patients to have more health complications than patients with Type 1 diabetes. Additionally, the effects found between age and probability of readmission may be confounded by the type of diabetes the patient has as Type 1 is more common in children and Type 2 is more common in adults. Therefore, including the type of diabetes the patient has in the data could lead to more accurate predictions of readmission. Additionally, diabetes is much better managed with a good diet and exercise. Including variables that indicate how healthy a patient eats and how often a patient exercises could be indicative of the patient's lifestyle. These lifestyle variables would be important to include in predicting the chance of a patient being readmitted. 
+
+## Appendix
+The significance of the variables in the final model are shown in the Anova output below. The estimates of these coefficients are shown in the summary output. 
+
+```{r, echo = FALSE}
+Anova(fit.logit.lambda1se.back2)
+summary(fit.logit.lambda1se.back2)
+```

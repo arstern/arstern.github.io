@@ -193,6 +193,23 @@
                     <!-- End .project-info -->
                 </div>
                 <!-- End .project -->
+		    
+		 <div class="project shadow-large">
+                    <div class="project-image">
+                        <img src="images/ecog.png" style="width:300px;height:225px;" />
+                    </div>
+                    <!-- End .project-image -->
+                    <div class="project-info">
+                        <h3>Predicting Finger Flexion Motion</h3>
+                        <p>
+				An algorithm to predict finger flexion motion from raw ECoG data. The algorithm pre-processes the data by removing noisy channels, filtering the data, and subtracting constant noise. It then extracts 6 unique features from each channel for every subject’s dataset. Then, six features are extracted: average time domain signal voltage, and average frequency domain voltage of five different frequency bands. A linear decoder was used to create a model for the four fingers with a specific linear filter for each finger. The predicted finger angles were zero clamped and smoothed, and initial predictions were spline interpolated. Methods to develop this algorithm were influenced by published literature, past engineering competitions, and guidance provided by course instructors. This algorithm achieved a maximum correlation of 0.5072 when compared to unseen testing data.
+                        </p>
+                        <a href="https://github.com/arstern/checkers">View Project on Github</a>
+                    </div>
+                    <!-- End .project-info -->
+			 
+                </div>
+                <!-- End .project -->
 
                 <div class="project shadow-large">
                     <div class="project-image">

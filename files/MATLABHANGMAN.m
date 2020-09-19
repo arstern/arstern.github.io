@@ -151,9 +151,6 @@ NFL_Teams_data={'CARDINALS','FALCONS','RAVENS','BILLS','PANTHERS', 'BEARS',...
 
 Surprise_Me_data=[US_Presidents_data,Capitals_data,Scientists_data,NBA_Teams_data,NFL_Teams_data]; %data set for surprise me
 
-%[sound1,fs1]=audioread('cheer.wav'); %load cheer sound
-%[sound2,fs2]=audioread('boo.wav'); %load boo sound
-
 %initialize varibles
 word=''; %intialize variable for word to be generate 
 guess=0; %initialize variable for user's guess
@@ -484,7 +481,6 @@ live_selection=0; %user has not yet cosen a radiobutton for number of lives
                 if nnz(check_guess)==length(word) %the user has guessed all the letters --> game won
                     text(5,5,'YOU WIN!','Color','green','FontSize',30,'HorizontalAlignment','center') %tell user they've won
                     continue_game=0; %stop user from being able to enter more guesses
-                    sound(sound1,2*fs1); %play cheer noise at appropriate sampling rate
                     pause(4)
                     close(f) %close game
                 end
@@ -499,7 +495,6 @@ live_selection=0; %user has not yet cosen a radiobutton for number of lives
                     end
                     text(5,5,'YOU LOSE!','Color','red','FontSize',30,'HorizontalAlignment','center') %tell user they've lost
                     continue_game=0; %stop user from being able to enter more guesses
-                    sound(sound2,fs2); %play boo noise
                     pause(4)
                     close(f) %close game
                 end
@@ -507,9 +502,3 @@ live_selection=0; %user has not yet cosen a radiobutton for number of lives
         end
     end
 end
-%% Arielle Stern
-%ENGR 105 Final Project
-%NOTE: This function makes use of two additional files: cheer.wav and
-%boo.wav. Due to the fact that I have submitted this project to canvas
-%several times, the name of not only my .m file but also these .wav files
-%have been changed by canvas.
